@@ -1,9 +1,3 @@
-// main.cpp - Command-line tool for k-mer sketching and querying
-//
-// Usage:
-//   1. Build database: ./kmer_tool sketch -i input_files.txt -o database/ -k 21 -t 0.001 --h1
-//   2. Query: ./kmer_tool query -d database/ -q query.fasta -k 21 -t 0.001 -o results.tsv
-
 #include "kmer_sketch_tool.h"
 #include <iostream>
 #include <fstream>
@@ -24,38 +18,76 @@ void print_usage() {
     cout << "    kmer_tool query -d <database_dir> -q <query_fasta> [options]\n\n";
     cout << "Options:\n";
     cout << "  Common:\n";
-    cout << "    -k INT        K-mer size (default: 21, max: 32)\n";
-    cout << "    -t FLOAT      Sketch fraction theta (default: 1.0, no sketching)\n";
     cout << "    -p INT        Number of threads (default: 1)\n";
-    cout << "    -s INT        Random seed (default: 42)\n";
     cout << "    -h, --help    Print this help message\n\n";
     cout << "  Sketch mode:\n";
+    cout << "    -k INT        K-mer size (default: 21, max: " << KMER_MAX_K << ")\n";
+    cout << "    -s INT        Random seed (default: 42)\n";
     cout << "    -i PATH       Input can be:\n";
     cout << "                    - Directory containing FASTA files\n";
     cout << "                    - Single FASTA file (.fa, .fasta, .fna, etc.)\n";
     cout << "                    - Text file with list of FASTA paths (one per line)\n";
+    cout << "                    - Multiple files (can repeat -i or use wildcards)\n";
+    cout << "                  Note: Each FASTA file becomes one sketch (all sequences\n";
+    cout << "                        within a file are concatenated). Sketch ID is the\n";
+    cout << "                        filename without path and extension.\n";
+    cout << "                  Memory efficient: sketches are written incrementally.\n";
     cout << "    -o DIR        Output database directory\n";
+    cout << "    -t FLOAT      Sketch fraction theta (default: 1.0, no sketching)\n";
     cout << "    --h1          Compute h1 statistics (for strong estimator)\n";
-    cout << "    --no-h1       Do not compute h1 (faster, only r_sm available)\n\n";
+    cout << "    --no-h1       Do not compute h1 (faster, only r_sm available)\n";
+    cout << "    --sketch-mode MODE  Sketch mode (default: individual)\n";
+    cout << "                    individual: Each file -> separate sketch\n";
+    cout << "                    combined:   All files -> one sketch\n\n";
     cout << "  Query mode:\n";
     cout << "    -d DIR        Database directory\n";
-    cout << "    -q FILE       Query FASTA file\n";
+    cout << "    -q FILE(S)    Query FASTA file(s). Can specify multiple -q options\n";
+    cout << "                  or use shell wildcards (e.g., -q *.fasta)\n";
     cout << "    -o FILE       Output results file (default: stdout)\n";
     cout << "    --mode MODE   Query mode (default: file)\n";
-    cout << "                    file (or per-file):     One result per FASTA file (concatenate sequences)\n";
-    cout << "                    sequence (or per-sequence): One result per sequence in FASTA\n";
-    cout << "    --top INT     Show only top N results (default: all)\n\n";
+    cout << "                    file:     Concatenate all sequences in each query file\n";
+    cout << "                              Query ID is filename without path/extension\n";
+    cout << "                    sequence: Query each sequence separately\n";
+    cout << "                              Query ID is the sequence header\n";
+    cout << "                    batch:    Process multiple files (same as file mode)\n";
+    cout << "    --top INT     Show only top N results per query (default: all)\n";
+    cout << "    --no-streaming  Load entire database into memory (faster but uses more RAM)\n";
+    cout << "\n";
+    cout << "NOTE: Query mode automatically reads k, theta, and seed from the database.\n";
+    cout << "      No need to specify these parameters when querying!\n";
+    cout << "\n";
     cout << "Examples:\n";
-    cout << "  # Build from directory\n";
-    cout << "  kmer_tool sketch -i ./genomes/ -o db/ -k 21 -t 0.001 --h1 -p 8\n\n";
-    cout << "  # Build from single FASTA\n";
-    cout << "  kmer_tool sketch -i genome.fasta -o db/ -k 21 --h1\n\n";
-    cout << "  # Build from file list\n";
-    cout << "  kmer_tool sketch -i genomes.txt -o db/ -k 21 -t 1.0 --h1\n\n";
-    cout << "  # Query (per-file mode - concatenate all sequences)\n";
-    cout << "  kmer_tool query -d db/ -q query.fasta -k 21 --mode file -o results.tsv\n\n";
-    cout << "  # Query (per-sequence mode - separate result for each sequence)\n";
-    cout << "  kmer_tool query -d db/ -q query.fasta -k 21 --mode sequence -o results.tsv\n\n";
+    cout << "  # Build from directory (each file -> one sketch, incremental writing)\n";
+    cout << "  kmer_tool sketch -i ./genomes/ -o db/ -k 21 -t 0.001 --h1 -s 42 -p 8\n";
+    cout << "    Result: genome_A.fasta -> sketch ID 'genome_A'\n";
+    cout << "            genome_B.fasta -> sketch ID 'genome_B'\n";
+    cout << "            Each sketch is written to disk immediately after creation\n";
+    cout << "            Parameters k=21, theta=0.001, seed=42 are saved in sketches\n\n";
+    cout << "  # Build from wildcards\n";
+    cout << "  kmer_tool sketch -i /path/*.fasta -o db/ -k 21 --h1\n\n";
+    cout << "  # Build combined sketch (all files merged into one)\n";
+    cout << "  kmer_tool sketch -i ./genomes/ -o db/ -k 21 --sketch-mode combined\n";
+    cout << "    Result: All files -> single sketch ID 'combined'\n\n";
+    cout << "  # Query single file (parameters auto-read from database)\n";
+    cout << "  kmer_tool query -d db/ -q assembly.fasta -o results.tsv -p 4\n";
+    cout << "    Result: Query ID is 'assembly' (filename without extension)\n";
+    cout << "            Uses k=21, theta=0.001, seed=42 from database automatically\n";
+    cout << "            Database sketches loaded one at a time (streaming, memory efficient)\n\n";
+    cout << "  # Query multiple files (batch mode)\n";
+    cout << "  kmer_tool query -d db/ -q *.fasta --mode batch -o results.tsv\n\n";
+    cout << "  # Query with full database in memory (faster but more RAM)\n";
+    cout << "  kmer_tool query -d db/ -q query.fasta --no-streaming -o results.tsv\n\n";
+    cout << "  # Query each sequence separately (sequence mode)\n";
+    cout << "  kmer_tool query -d db/ -q contigs.fasta --mode sequence -o results.tsv\n";
+    cout << "    Result: Each sequence header becomes a separate query ID\n\n";
+    cout << "Multi-sequence FASTA files:\n";
+    cout << "  During sketch building:\n";
+    cout << "    - All sequences in a file are concatenated into one sketch\n";
+    cout << "    - Sketch ID = filename (without path and extension)\n";
+    cout << "    - Example: chr1.fasta containing chr1, chr2, chr3 -> ID 'chr1'\n";
+    cout << "  During query:\n";
+    cout << "    - file/batch mode: concatenate all sequences, use filename as ID\n";
+    cout << "    - sequence mode: query each sequence separately, use headers as IDs\n\n";
 }
 
 void print_sketch_summary(const SketchDatabase& db) {
@@ -69,47 +101,45 @@ void print_sketch_summary(const SketchDatabase& db) {
         const auto& first = db.get_sketches()[0];
         cout << "K-mer size: " << first.k << "\n";
         cout << "Theta: " << first.theta << "\n";
+        cout << "Seed: " << first.seed << "\n";
         cout << "H1 stats: " << (first.has_h1 ? "Yes" : "No") << "\n";
     }
     cout << string(80, '=') << "\n\n";
 }
 
+void write_result(ostream& out, const QueryResult& result) {
+    out << result.query_id << "\t"
+        << result.target_id << "\t"
+        << result.shared_kmers << "\t"
+        << result.novel_kmers << "\t"
+        << result.query_total << "\t"
+        << scientific << setprecision(6) << result.r_sm << "\t";
+    
+    if (result.has_strong) {
+        out << scientific << setprecision(6) << result.r_strong << "\tyes\n";
+    } else {
+        out << "NA\tno\n";
+    }
+}
+
 void print_query_results(const vector<QueryResult>& results, ostream& out, int top_n = -1) {
-    // Header
     out << "query_id\ttarget_id\tshared_kmers\tnovel_kmers\tquery_total\t"
         << "r_sm\tr_strong\thas_strong\n";
     
-    // Sort by r_sm (ascending - lower is more similar)
     vector<QueryResult> sorted_results = results;
     std::sort(sorted_results.begin(), sorted_results.end(),
          [](const QueryResult& a, const QueryResult& b) {
              return a.r_sm < b.r_sm;
          });
     
-    // Output results
     int count = 0;
     for (const auto& result : sorted_results) {
         if (top_n > 0 && count >= top_n) break;
-        
-        out << result.query_id << "\t"
-            << result.target_id << "\t"
-            << result.shared_kmers << "\t"
-            << result.novel_kmers << "\t"
-            << result.query_total << "\t"
-            << scientific << setprecision(6) << result.r_sm << "\t";
-        
-        if (result.has_strong) {
-            out << scientific << setprecision(6) << result.r_strong << "\t"
-                << "yes\n";
-        } else {
-            out << "NA\tno\n";
-        }
-        
+        write_result(out, result);
         count++;
     }
 }
 
-// Helper function to check if file is FASTA
 bool is_fasta_file(const string& filename) {
     size_t dot_pos = filename.find_last_of('.');
     if (dot_pos == string::npos) return false;
@@ -121,7 +151,6 @@ bool is_fasta_file(const string& filename) {
             ext == "ffn" || ext == "faa" || ext == "frn");
 }
 
-// Helper function to get all FASTA files from directory
 vector<string> get_fasta_files_from_dir(const string& dir_path) {
     vector<string> fasta_files;
     
@@ -142,17 +171,20 @@ vector<string> get_fasta_files_from_dir(const string& dir_path) {
 }
 
 int sketch_mode(int argc, char* argv[]) {
-    string input_path, output_dir;
+    vector<string> input_paths;
+    string output_dir;
     int k = 21;
     double theta = 1.0;
     int num_threads = 1;
     uint32_t seed = 42;
     bool compute_h1 = false;
+    string sketch_mode_str = "individual";
     
-    // Parse arguments
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
-            input_path = argv[++i];
+            while (i + 1 < argc && argv[i + 1][0] != '-') {
+                input_paths.push_back(argv[++i]);
+            }
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_dir = argv[++i];
         } else if (strcmp(argv[i], "-k") == 0 && i + 1 < argc) {
@@ -167,18 +199,19 @@ int sketch_mode(int argc, char* argv[]) {
             compute_h1 = true;
         } else if (strcmp(argv[i], "--no-h1") == 0) {
             compute_h1 = false;
+        } else if (strcmp(argv[i], "--sketch-mode") == 0 && i + 1 < argc) {
+            sketch_mode_str = argv[++i];
         }
     }
     
-    // Validate
-    if (input_path.empty() || output_dir.empty()) {
+    if (input_paths.empty() || output_dir.empty()) {
         cerr << "Error: -i and -o are required for sketch mode\n";
         print_usage();
         return 1;
     }
     
-    if (k < 1 || k > 32) {
-        cerr << "Error: k must be between 1 and 32\n";
+    if (k < 1 || k > KMER_MAX_K) {
+        cerr << "Error: k must be between 1 and " << KMER_MAX_K << "\n";
         return 1;
     }
     
@@ -187,161 +220,177 @@ int sketch_mode(int argc, char* argv[]) {
         return 1;
     }
     
-    // Determine input type and collect FASTA files
     vector<string> fasta_files;
     
-    if (fs::is_directory(input_path)) {
-        // Input is a directory - get all FASTA files
-        cout << "Input is directory, scanning for FASTA files...\n";
-        fasta_files = get_fasta_files_from_dir(input_path);
-        
-        if (fasta_files.empty()) {
-            cerr << "Error: No FASTA files found in directory: " << input_path << "\n";
-            return 1;
-        }
-        
-        cout << "Found " << fasta_files.size() << " FASTA files\n";
-        
-    } else if (fs::is_regular_file(input_path)) {
-        // Check if it's a FASTA file or a list file
-        if (is_fasta_file(input_path)) {
-            // Single FASTA file
-            cout << "Input is single FASTA file\n";
-            fasta_files.push_back(input_path);
+    for (const string& input_path : input_paths) {
+        if (fs::is_directory(input_path)) {
+            cout << "Scanning directory: " << input_path << "\n";
+            auto dir_files = get_fasta_files_from_dir(input_path);
+            fasta_files.insert(fasta_files.end(), dir_files.begin(), dir_files.end());
             
-        } else {
-            // Assume it's a text file with list of FASTA files
-            cout << "Input is file list\n";
-            ifstream list_file(input_path);
-            if (!list_file.is_open()) {
-                cerr << "Error: Cannot open file: " << input_path << "\n";
-                return 1;
-            }
-            
-            string line;
-            while (getline(list_file, line)) {
-                // Remove leading/trailing whitespace
-                line.erase(0, line.find_first_not_of(" \t\r\n"));
-                line.erase(line.find_last_not_of(" \t\r\n") + 1);
-                
-                if (!line.empty() && line[0] != '#') {
-                    fasta_files.push_back(line);
+        } else if (fs::is_regular_file(input_path)) {
+            if (is_fasta_file(input_path)) {
+                fasta_files.push_back(input_path);
+            } else {
+                cout << "Reading file list: " << input_path << "\n";
+                ifstream list_file(input_path);
+                if (!list_file.is_open()) {
+                    cerr << "Error: Cannot open file: " << input_path << "\n";
+                    return 1;
                 }
+                
+                string line;
+                while (getline(list_file, line)) {
+                    line.erase(0, line.find_first_not_of(" \t\r\n"));
+                    line.erase(line.find_last_not_of(" \t\r\n") + 1);
+                    
+                    if (!line.empty() && line[0] != '#') {
+                        fasta_files.push_back(line);
+                    }
+                }
+                list_file.close();
             }
-            list_file.close();
-            
-            if (fasta_files.empty()) {
-                cerr << "Error: No input files found in list: " << input_path << "\n";
-                return 1;
-            }
+        } else {
+            cerr << "Warning: Input path does not exist: " << input_path << "\n";
         }
-        
+    }
+    
+    if (fasta_files.empty()) {
+        cerr << "Error: No FASTA files found\n";
+        return 1;
+    }
+    
+    cout << "Found " << fasta_files.size() << " FASTA file(s) total\n";
+    
+    SketchMode smode;
+    if (sketch_mode_str == "individual" || sketch_mode_str == "separate") {
+        smode = SketchMode::INDIVIDUAL;
+    } else if (sketch_mode_str == "combined" || sketch_mode_str == "merge") {
+        smode = SketchMode::COMBINED;
     } else {
-        cerr << "Error: Input path does not exist or is not accessible: " << input_path << "\n";
+        cerr << "Error: Invalid sketch mode '" << sketch_mode_str 
+             << "'. Use 'individual' or 'combined'\n";
         return 1;
     }
     
     cout << "Building sketch database...\n";
+    cout << "  Sketch mode: " << (smode == SketchMode::INDIVIDUAL ? "individual" : "combined") << "\n";
     cout << "  K-mer size: " << k << "\n";
     cout << "  Theta: " << theta << "\n";
+    cout << "  Seed: " << seed << "\n";
     cout << "  Compute h1: " << (compute_h1 ? "Yes" : "No") << "\n";
     cout << "  Threads: " << num_threads << "\n";
-    cout << "  Input files: " << fasta_files.size() << "\n\n";
+    cout << "  Input files: " << fasta_files.size() << "\n";
+    if (smode == SketchMode::INDIVIDUAL) {
+        cout << "  Note: Using incremental disk writing (memory efficient).\n";
+        cout << "        Each sketch is written immediately after creation.\n";
+        cout << "        Parameters (k, theta, seed) are saved in each sketch.\n";
+    }
+    cout << "\n";
     
-    // Build database
     SketchBuilder builder(k, theta, compute_h1, seed, num_threads);
-    SketchDatabase db = builder.build_database(fasta_files);
+    builder.build_database_incremental(fasta_files, output_dir, smode);
     
-    // Save database
-    db.save(output_dir);
-    
+    SketchDatabase db = SketchDatabase::load(output_dir);
     print_sketch_summary(db);
     
     return 0;
 }
 
 int query_mode(int argc, char* argv[]) {
-    string db_dir, query_file, output_file;
-    int k = 21;
-    double theta = 1.0;
+    string db_dir, output_file;
+    vector<string> query_files;
     int num_threads = 1;
-    uint32_t seed = 42;
     int top_n = -1;
-    string mode_str = "file";  // Default: per-file mode
+    string mode_str = "file";
+    bool use_streaming = true;
     
-    // Parse arguments
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
             db_dir = argv[++i];
         } else if (strcmp(argv[i], "-q") == 0 && i + 1 < argc) {
-            query_file = argv[++i];
+            while (i + 1 < argc && argv[i + 1][0] != '-') {
+                query_files.push_back(argv[++i]);
+            }
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_file = argv[++i];
-        } else if (strcmp(argv[i], "-k") == 0 && i + 1 < argc) {
-            k = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
-            theta = atof(argv[++i]);
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             num_threads = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
-            seed = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--top") == 0 && i + 1 < argc) {
             top_n = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             mode_str = argv[++i];
+        } else if (strcmp(argv[i], "--no-streaming") == 0) {
+            use_streaming = false;
         }
     }
     
-    // Validate
-    if (db_dir.empty() || query_file.empty()) {
+    if (db_dir.empty() || query_files.empty()) {
         cerr << "Error: -d and -q are required for query mode\n";
         print_usage();
         return 1;
     }
     
-    // Parse mode
     QueryMode qmode;
     if (mode_str == "file" || mode_str == "per-file") {
         qmode = QueryMode::PER_FILE;
     } else if (mode_str == "sequence" || mode_str == "per-sequence") {
         qmode = QueryMode::PER_SEQUENCE;
+    } else if (mode_str == "batch") {
+        qmode = QueryMode::BATCH;
     } else {
-        cerr << "Error: Invalid mode '" << mode_str << "'. Use 'file' or 'sequence'\n";
+        cerr << "Error: Invalid mode '" << mode_str << "'. Use 'file', 'sequence', or 'batch'\n";
         return 1;
     }
     
-    // Load database
-    cout << "Loading database from " << db_dir << "...\n";
-    SketchDatabase db = SketchDatabase::load(db_dir);
-    
-    if (db.size() == 0) {
-        cerr << "Error: Database is empty or failed to load\n";
-        return 1;
-    }
-    
-    print_sketch_summary(db);
-    
-    // Query
-    cout << "Querying sequences from " << query_file << "...\n";
-    cout << "Query mode: " << (qmode == QueryMode::PER_FILE ? "per-file" : "per-sequence") << "\n";
-    
-    QueryEngine engine(db, k, theta, seed, num_threads);
-    vector<QueryResult> results = engine.query_fasta(query_file, qmode);
-    
-    cout << "Found " << results.size() << " query-target pairs\n\n";
-    
-    // Output results
-    if (output_file.empty()) {
-        print_query_results(results, cout, top_n);
-    } else {
-        ofstream out(output_file);
-        if (!out.is_open()) {
-            cerr << "Error: Cannot write to " << output_file << "\n";
+    if (use_streaming) {
+        cout << "Loading database metadata from " << db_dir << "...\n";
+        DatabaseMetadata metadata = DatabaseMetadata::load(db_dir);
+        
+        if (metadata.size() == 0) {
+            cerr << "Error: Database is empty or failed to load\n";
             return 1;
         }
-        print_query_results(results, out, top_n);
-        out.close();
-        cout << "Results written to " << output_file << "\n";
+        
+        cout << "\n" << string(80, '=') << "\n";
+        cout << "Database Metadata\n";
+        cout << string(80, '=') << "\n";
+        cout << "Number of sketches: " << metadata.size() << "\n";
+        cout << "K-mer size: " << metadata.k << "\n";
+        cout << "Theta: " << metadata.theta << "\n";
+        cout << "Seed: " << metadata.seed << "\n";
+        cout << "H1 stats: " << (metadata.has_h1 ? "Yes" : "No") << "\n";
+        cout << string(80, '=') << "\n\n";
+        
+        cout << "Using STREAMING query mode (memory efficient)\n";
+        cout << "  - Query k-mers will be extracted and kept in memory\n";
+        cout << "  - Database sketches will be loaded one at a time\n";
+        cout << "  - Results will be written incrementally\n";
+        cout << "  - All parameters (k, theta, seed) read from database automatically\n";
+        
+        if (qmode == QueryMode::PER_FILE || qmode == QueryMode::BATCH) {
+            cout << "  - Query mode: Concatenate all sequences per file\n";
+            cout << "  - Query ID: Filename (without path/extension)\n";
+        } else {
+            cout << "  - Query mode: Each sequence separately\n";
+            cout << "  - Query ID: Sequence header\n";
+        }
+        cout << "\n";
+        
+        QueryEngine engine(metadata, num_threads);
+        
+        cout << "Query will use:\n";
+        cout << "  k = " << engine.get_k() << " (from database)\n";
+        cout << "  theta = " << engine.get_theta() << " (from database)\n";
+        cout << "  seed = " << engine.get_seed() << " (from database)\n";
+        cout << "\n";
+        
+        engine.query_streaming(query_files, qmode, output_file);
+        
+    } else {
+        cerr << "Error: Non-streaming mode not implemented in this version.\n";
+        cerr << "Please use streaming mode (default) or remove --no-streaming flag.\n";
+        return 1;
     }
     
     return 0;
