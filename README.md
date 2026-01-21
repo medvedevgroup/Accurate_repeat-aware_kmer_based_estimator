@@ -168,7 +168,7 @@ This tool implements three k-mer based estimators for mutation rate estimation. 
 | -------------- | -------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
 | $\hat{q}_{pp}$ | Presence/absence                 | Presence/absence                    | $\vert sp(t) \setminus sp(s) \vert $                         |
 | $\hat{q}_{pc}$ | Presence/absence                 | Counts                              | $\sum_{\tau \in sp(t) \setminus sp(s) } occ(\tau,t) /L$      |
-| $\hat{q}_{cc}$ | Counts                           | Counts                              | $q_pc + (1-\hat{r}_{pc})^{k-1} · (\hat{r}_{pc}/3L) \cdot \sum_{\tau \in sp(s)} occ(\tau,s) · h_1(\tau,s)$ |
+| $\hat{q}_{cc}$ | Counts                           | Counts                              | $q_pc + (1-\hat{r}\_{pc})^{k-1} · (\hat{r}\_{pc}/3L) \cdot \sum_{\tau \in sp(s)} occ(\tau,s) · h_1(\tau,s)$ |
 
 **Notation:**
 - $s$: Query sequence with $L = \vert s \vert - k + 1$
