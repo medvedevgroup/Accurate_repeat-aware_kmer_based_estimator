@@ -177,7 +177,7 @@ This tool implements three k-mer based estimators for mutation rate estimation. 
 - $occ(\tau, t)$: Number of occurrences of k-mer $\tau$ in sequence $t$
 - $h_1(\tau, s)$: Number of k-mers in $sp(s)$ with Hamming distance 1 from $\tau$
 - $q$: Shorthand for $1 - (1-r)^k$, where r is the substitution rate
-- **Conversion**: Any estimator $\hat{r}$ defines $\hat{r} = 1 - (1 - \hat{q})^{1/k}$
+- **Conversion**: Any estimator $\hat{r}$ is defined by $\hat{r} = 1 - (1 - \hat{q})^{1/k}$
 
 ## File Organization
 
