@@ -229,12 +229,14 @@ struct QueryResult {
     size_t shared_kmers;
     size_t novel_kmers;
     size_t query_total;
-    double r_sm;
-    double r_strong;
-    bool has_strong;
+    double r_pc;      // Changed from r_sm (presence-count)
+    double r_cc;      // Changed from r_strong (count-count)
+    double r_pp;      // NEW: Pure presence-presence
+    bool has_cc;      // Changed from has_strong
+    bool has_pp;      // NEW: Has pure presence calculation
     
     QueryResult() : shared_kmers(0), novel_kmers(0), query_total(0),
-                    r_sm(0.0), r_strong(0.0), has_strong(false) {}
+                    r_pc(0.0), r_cc(0.0), r_pp(0.0), has_cc(false), has_pp(false) {}
 };
 
 enum class QueryMode {
@@ -260,6 +262,7 @@ private:
     uint32_t seed;
     kmer_t hash_threshold;
     int num_threads;
+    bool pp_mode;  // NEW: Pure presence mode
     
     bool should_keep_kmer(kmer_t kmer_encoded) const {
         if (theta >= 1.0) return true;
@@ -267,19 +270,21 @@ private:
         return hash_val <= hash_threshold;
     }
     
-    double compute_r_sm(size_t D_obs, size_t L, int k) const;
-    double compute_r_strong(size_t D_obs, size_t L, int k, double h1_avg) const;
+    double compute_r_pc(size_t D_obs, size_t L, int k) const;  // Renamed from r_sm
+    double compute_r_cc(size_t D_obs, size_t L, int k, double h1_avg) const;  // Renamed from r_strong
+    double compute_r_pp(size_t D_obs_sketched, size_t L, double theta) const;  // NEW
     
     QueryKmers extract_query_kmers(const string& sequence, const string& query_id) const;
     
     QueryResult compare_with_sketch(const QueryKmers& query, const KmerSketch& target) const;
     
 public:
-    QueryEngine(const DatabaseMetadata& meta, int threads = 1);
+    QueryEngine(const DatabaseMetadata& meta, int threads = 1, bool pp_flag = false);
     
     double get_theta() const { return theta; }
     int get_k() const { return k; }
     uint32_t get_seed() const { return seed; }
+    bool get_pp_mode() const { return pp_mode; }
     
     void query_streaming(const vector<string>& fasta_files,
                         QueryMode mode,

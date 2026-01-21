@@ -10,12 +10,12 @@ using namespace std;
 namespace fs = std::filesystem;
 
 void print_usage() {
-    cout << "K-mer Sketch Tool - Fast mutation rate estimation\n\n";
+    cout << "Repeat-Robust Estimator - Fast mutation rate estimation\n\n";
     cout << "Usage:\n";
     cout << "  Build database:\n";
-    cout << "    kmer_tool sketch -i <input> -o <output_dir> [options]\n\n";
+    cout << "    repeat_robust_estimator sketch -i <input> -o <output_dir> [options]\n\n";
     cout << "  Query database:\n";
-    cout << "    kmer_tool query -d <database_dir> -q <query_fasta> [options]\n\n";
+    cout << "    repeat_robust_estimator query -d <database_dir> -q <query_fasta> [options]\n\n";
     cout << "Options:\n";
     cout << "  Common:\n";
     cout << "    -p INT        Number of threads (default: 1)\n";
@@ -34,8 +34,7 @@ void print_usage() {
     cout << "                  Memory efficient: sketches are written incrementally.\n";
     cout << "    -o DIR        Output database directory\n";
     cout << "    -t FLOAT      Sketch fraction theta (default: 1.0, no sketching)\n";
-    cout << "    --h1          Compute h1 statistics (for strong estimator)\n";
-    cout << "    --no-h1       Do not compute h1 (faster, only r_sm available)\n";
+    cout << "    --h1          Compute h1 statistics (for r_cc estimator, default: off)\n";
     cout << "    --sketch-mode MODE  Sketch mode (default: individual)\n";
     cout << "                    individual: Each file -> separate sketch\n";
     cout << "                    combined:   All files -> one sketch\n\n";
@@ -44,6 +43,10 @@ void print_usage() {
     cout << "    -q FILE(S)    Query FASTA file(s). Can specify multiple -q options\n";
     cout << "                  or use shell wildcards (e.g., -q *.fasta)\n";
     cout << "    -o FILE       Output results file (default: stdout)\n";
+    cout << "    --pp          Enable presence-presence mode (compute r_pp)\n";
+    cout << "                    r_pp: presence-presence (query uses sets, DB uses sets)\n";
+    cout << "                    r_pc: presence-count (query uses sets, DB uses counts)\n";
+    cout << "                    r_cc: count-count (both use counts with h1 correction)\n";
     cout << "    --mode MODE   Query mode (default: file)\n";
     cout << "                    file:     Concatenate all sequences in each query file\n";
     cout << "                              Query ID is filename without path/extension\n";
@@ -58,27 +61,30 @@ void print_usage() {
     cout << "\n";
     cout << "Examples:\n";
     cout << "  # Build from directory (each file -> one sketch, incremental writing)\n";
-    cout << "  kmer_tool sketch -i ./genomes/ -o db/ -k 21 -t 0.001 --h1 -s 42 -p 8\n";
+    cout << "  repeat_robust_estimator sketch -i ./genomes/ -o db/ -k 21 -t 0.001 --h1 -s 42 -p 8\n";
     cout << "    Result: genome_A.fasta -> sketch ID 'genome_A'\n";
     cout << "            genome_B.fasta -> sketch ID 'genome_B'\n";
     cout << "            Each sketch is written to disk immediately after creation\n";
     cout << "            Parameters k=21, theta=0.001, seed=42 are saved in sketches\n\n";
     cout << "  # Build from wildcards\n";
-    cout << "  kmer_tool sketch -i /path/*.fasta -o db/ -k 21 --h1\n\n";
+    cout << "  repeat_robust_estimator sketch -i /path/*.fasta -o db/ -k 21 --h1\n\n";
     cout << "  # Build combined sketch (all files merged into one)\n";
-    cout << "  kmer_tool sketch -i ./genomes/ -o db/ -k 21 --sketch-mode combined\n";
+    cout << "  repeat_robust_estimator sketch -i ./genomes/ -o db/ -k 21 --sketch-mode combined\n";
     cout << "    Result: All files -> single sketch ID 'combined'\n\n";
     cout << "  # Query single file (parameters auto-read from database)\n";
-    cout << "  kmer_tool query -d db/ -q assembly.fasta -o results.tsv -p 4\n";
+    cout << "  repeat_robust_estimator query -d db/ -q assembly.fasta -o results.tsv -p 4\n";
     cout << "    Result: Query ID is 'assembly' (filename without extension)\n";
     cout << "            Uses k=21, theta=0.001, seed=42 from database automatically\n";
     cout << "            Database sketches loaded one at a time (streaming, memory efficient)\n\n";
+    cout << "  # Query with --pp mode (enable r_pp calculation)\n";
+    cout << "  repeat_robust_estimator query -d db/ -q assembly.fasta -o results.tsv --pp\n";
+    cout << "    Result: Outputs r_pc, r_cc, and r_pp\n\n";
     cout << "  # Query multiple files (batch mode)\n";
-    cout << "  kmer_tool query -d db/ -q *.fasta --mode batch -o results.tsv\n\n";
+    cout << "  repeat_robust_estimator query -d db/ -q *.fasta --mode batch -o results.tsv\n\n";
     cout << "  # Query with full database in memory (faster but more RAM)\n";
-    cout << "  kmer_tool query -d db/ -q query.fasta --no-streaming -o results.tsv\n\n";
+    cout << "  repeat_robust_estimator query -d db/ -q query.fasta --no-streaming -o results.tsv\n\n";
     cout << "  # Query each sequence separately (sequence mode)\n";
-    cout << "  kmer_tool query -d db/ -q contigs.fasta --mode sequence -o results.tsv\n";
+    cout << "  repeat_robust_estimator query -d db/ -q contigs.fasta --mode sequence -o results.tsv\n";
     cout << "    Result: Each sequence header becomes a separate query ID\n\n";
     cout << "Multi-sequence FASTA files:\n";
     cout << "  During sketch building:\n";
@@ -107,35 +113,52 @@ void print_sketch_summary(const SketchDatabase& db) {
     cout << string(80, '=') << "\n\n";
 }
 
-void write_result(ostream& out, const QueryResult& result) {
+void write_result(ostream& out, const QueryResult& result, bool pp_mode) {
     out << result.query_id << "\t"
         << result.target_id << "\t"
         << result.shared_kmers << "\t"
         << result.novel_kmers << "\t"
         << result.query_total << "\t"
-        << scientific << setprecision(6) << result.r_sm << "\t";
+        << scientific << setprecision(6) << result.r_pc << "\t";
     
-    if (result.has_strong) {
-        out << scientific << setprecision(6) << result.r_strong << "\tyes\n";
+    if (result.has_cc) {
+        out << scientific << setprecision(6) << result.r_cc << "\tyes";
     } else {
-        out << "NA\tno\n";
+        out << "NA\tno";
+    }
+    
+    if (pp_mode) {
+        out << "\t";
+        if (result.has_pp) {
+            out << scientific << setprecision(6) << result.r_pp << "\tyes\n";
+        } else {
+            out << "NA\tno\n";
+        }
+    } else {
+        out << "\n";
     }
 }
 
-void print_query_results(const vector<QueryResult>& results, ostream& out, int top_n = -1) {
+void print_query_results(const vector<QueryResult>& results, ostream& out, bool pp_mode, int top_n = -1) {
     out << "query_id\ttarget_id\tshared_kmers\tnovel_kmers\tquery_total\t"
-        << "r_sm\tr_strong\thas_strong\n";
+        << "r_pc\tr_cc\thas_cc";
+    
+    if (pp_mode) {
+        out << "\tr_pp\thas_pp\n";
+    } else {
+        out << "\n";
+    }
     
     vector<QueryResult> sorted_results = results;
     std::sort(sorted_results.begin(), sorted_results.end(),
          [](const QueryResult& a, const QueryResult& b) {
-             return a.r_sm < b.r_sm;
+             return a.r_pc < b.r_pc;
          });
     
     int count = 0;
     for (const auto& result : sorted_results) {
         if (top_n > 0 && count >= top_n) break;
-        write_result(out, result);
+        write_result(out, result, pp_mode);
         count++;
     }
 }
@@ -197,8 +220,6 @@ int sketch_mode(int argc, char* argv[]) {
             seed = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--h1") == 0) {
             compute_h1 = true;
-        } else if (strcmp(argv[i], "--no-h1") == 0) {
-            compute_h1 = false;
         } else if (strcmp(argv[i], "--sketch-mode") == 0 && i + 1 < argc) {
             sketch_mode_str = argv[++i];
         }
@@ -304,6 +325,7 @@ int query_mode(int argc, char* argv[]) {
     int top_n = -1;
     string mode_str = "file";
     bool use_streaming = true;
+    bool pp_mode = false;  // NEW
     
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
@@ -322,6 +344,8 @@ int query_mode(int argc, char* argv[]) {
             mode_str = argv[++i];
         } else if (strcmp(argv[i], "--no-streaming") == 0) {
             use_streaming = false;
+        } else if (strcmp(argv[i], "--pp") == 0) {
+            pp_mode = true;  // NEW
         }
     }
     
@@ -368,6 +392,10 @@ int query_mode(int argc, char* argv[]) {
         cout << "  - Results will be written incrementally\n";
         cout << "  - All parameters (k, theta, seed) read from database automatically\n";
         
+        if (pp_mode) {
+            cout << "  - PP mode ENABLED: Will compute r_pp (presence-presence)\n";
+        }
+        
         if (qmode == QueryMode::PER_FILE || qmode == QueryMode::BATCH) {
             cout << "  - Query mode: Concatenate all sequences per file\n";
             cout << "  - Query ID: Filename (without path/extension)\n";
@@ -377,12 +405,13 @@ int query_mode(int argc, char* argv[]) {
         }
         cout << "\n";
         
-        QueryEngine engine(metadata, num_threads);
+        QueryEngine engine(metadata, num_threads, pp_mode);  // Pass pp_mode
         
         cout << "Query will use:\n";
         cout << "  k = " << engine.get_k() << " (from database)\n";
         cout << "  theta = " << engine.get_theta() << " (from database)\n";
         cout << "  seed = " << engine.get_seed() << " (from database)\n";
+        cout << "  pp_mode = " << (engine.get_pp_mode() ? "yes" : "no") << "\n";
         cout << "\n";
         
         engine.query_streaming(query_files, qmode, output_file);

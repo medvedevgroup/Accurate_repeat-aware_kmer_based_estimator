@@ -8,8 +8,8 @@
 
 namespace fs = std::filesystem;
 
-QueryEngine::QueryEngine(const DatabaseMetadata& meta, int threads)
-    : metadata(meta), num_threads(threads) {
+QueryEngine::QueryEngine(const DatabaseMetadata& meta, int threads, bool pp_flag)
+    : metadata(meta), num_threads(threads), pp_mode(pp_flag) {
     
     // Read all parameters from metadata
     k = metadata.k;
@@ -27,6 +27,7 @@ QueryEngine::QueryEngine(const DatabaseMetadata& meta, int threads)
     cout << "  theta = " << theta << "\n";
     cout << "  seed = " << seed << "\n";
     cout << "  has_h1 = " << (metadata.has_h1 ? "yes" : "no") << "\n";
+    cout << "  pp_mode = " << (pp_mode ? "yes" : "no") << "\n";
 }
 
 KmerSketch SketchBuilder::build_from_string(const string& seq, const string& id) const {
@@ -350,34 +351,44 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
     }
 }
 
-double QueryEngine::compute_r_sm(size_t D_obs, size_t L, int k) const {
+double QueryEngine::compute_r_pc(size_t D_obs, size_t L, int k) const {
     if (L == 0) return 0.0;
     
-    double q_sm = static_cast<double>(D_obs) / static_cast<double>(L);
+    double q_pc = static_cast<double>(D_obs) / static_cast<double>(L);
     
-    if (q_sm >= 1.0) q_sm = 1.0;
-    if (q_sm < 0.0) q_sm = 0.0;
+    if (q_pc >= 1.0) q_pc = 1.0;
+    if (q_pc < 0.0) q_pc = 0.0;
     
-    double r_sm = 1.0 - pow(1.0 - q_sm, 1.0 / k);
-    return r_sm;
+    double r_pc = 1.0 - pow(1.0 - q_pc, 1.0 / k);
+    return r_pc;
 }
 
-double QueryEngine::compute_r_strong(size_t D_obs, size_t L, int k, double h1_avg) const {
+double QueryEngine::compute_r_cc(size_t D_obs, size_t L, int k, double h1_avg) const {
     if (L == 0) return 0.0;
     
-    double r_sm = compute_r_sm(D_obs, L, k);
+    double r_pc = compute_r_pc(D_obs, L, k);
     
-    double bias_correction = h1_avg * pow(1.0 - r_sm, k - 1) * r_sm / 3.0;
-    // cout << "h1 " << h1_avg << endl;
+    double bias_correction = h1_avg * pow(1.0 - r_pc, k - 1) * r_pc / 3.0;
     
-    double q_strong = (static_cast<double>(D_obs) / static_cast<double>(L)) + bias_correction;
-    // cout << "q_sm " <<(static_cast<double>(D_obs) / static_cast<double>(L)) << endl;
-    // cout << "qstrong "<< q_strong << endl;
-    if (q_strong >= 1.0) q_strong = (static_cast<double>(D_obs) / static_cast<double>(L));
-    if (q_strong < 0.0) q_strong = 0.0;
+    double q_cc = (static_cast<double>(D_obs) / static_cast<double>(L)) + bias_correction;
+    if (q_cc >= 1.0) q_cc = (static_cast<double>(D_obs) / static_cast<double>(L));
+    if (q_cc < 0.0) q_cc = 0.0;
     
-    double r_strong = 1.0 - pow(1.0 - q_strong, 1.0 / k);
-    return r_strong;
+    double r_cc = 1.0 - pow(1.0 - q_cc, 1.0 / k);
+    return r_cc;
+}
+
+double QueryEngine::compute_r_pp(size_t D_obs_sketched, size_t L, double theta) const {
+    if (L == 0 || theta <= 0.0) return 0.0;
+    
+    // q = novel_sketched_kmers / (L * theta)
+    double q_pp = static_cast<double>(D_obs_sketched) / (static_cast<double>(L) * theta);
+    
+    if (q_pp >= 1.0) q_pp = 1.0;
+    if (q_pp < 0.0) q_pp = 0.0;
+    
+    double r_pp = 1.0 - pow(1.0 - q_pp, 1.0 / k);
+    return r_pp;
 }
 
 QueryKmers QueryEngine::extract_query_kmers(const string& sequence, const string& query_id) const {
@@ -473,14 +484,23 @@ QueryResult QueryEngine::compare_with_sketch(const QueryKmers& query,
         novel = query.total_kmers - shared;
     }
     
-    result.r_sm = compute_r_sm(novel, query.total_kmers, k);
+    result.r_pc = compute_r_pc(novel, query.total_kmers, k);
     
     if (target.has_h1) {
-        result.r_strong = compute_r_strong(novel, query.total_kmers, k, target.h1_avg);
-        result.has_strong = true;
+        result.r_cc = compute_r_cc(novel, query.total_kmers, k, target.h1_avg);
+        result.has_cc = true;
     } else {
-        result.r_strong = 0.0;
-        result.has_strong = false;
+        result.r_cc = 0.0;
+        result.has_cc = false;
+    }
+    
+    // NEW: Compute r_pp if pp_mode is enabled
+    if (pp_mode) {
+        result.r_pp = compute_r_pp(novel_sketched, query.total_kmers, theta);
+        result.has_pp = true;
+    } else {
+        result.r_pp = 0.0;
+        result.has_pp = false;
     }
     
     return result;
@@ -546,7 +566,13 @@ void QueryEngine::query_streaming(const vector<string>& fasta_files,
     ostream& output_stream = use_stdout ? cout : out;
     
     output_stream << "query_id\ttarget_id\tshared_kmers\tnovel_kmers\tquery_total\t"
-                  << "r_sm\tr_strong\thas_strong\n";
+                  << "r_pc\tr_cc\thas_cc";
+    
+    if (pp_mode) {
+        output_stream << "\tr_pp\thas_pp\n";
+    } else {
+        output_stream << "\n";
+    }
     
     cout << "Step 2: Streaming through database (" << metadata.size() << " sketches)...\n";
     
@@ -574,12 +600,23 @@ void QueryEngine::query_streaming(const vector<string>& fasta_files,
                          << result.shared_kmers << "\t"
                          << result.novel_kmers << "\t"
                          << result.query_total << "\t"
-                         << scientific << setprecision(6) << result.r_sm << "\t";
+                         << scientific << setprecision(6) << result.r_pc << "\t";
             
-            if (result.has_strong) {
-                output_stream << scientific << setprecision(6) << result.r_strong << "\tyes\n";
+            if (result.has_cc) {
+                output_stream << scientific << setprecision(6) << result.r_cc << "\tyes";
             } else {
-                output_stream << "NA\tno\n";
+                output_stream << "NA\tno";
+            }
+            
+            if (pp_mode) {
+                output_stream << "\t";
+                if (result.has_pp) {
+                    output_stream << scientific << setprecision(6) << result.r_pp << "\tyes\n";
+                } else {
+                    output_stream << "NA\tno\n";
+                }
+            } else {
+                output_stream << "\n";
             }
             
             total_comparisons++;

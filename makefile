@@ -1,4 +1,4 @@
-CXX = g++-12
+CXX = g++
 CXXFLAGS = -std=c++17 -O3 -march=native -fopenmp -Wall -Wextra
 LDFLAGS = -pthread -lmpfr -lgmp
 
@@ -8,7 +8,7 @@ HEADERS = kmer_sketch_tool.h sketch.h Newton_method_strong.h MurmurHash3.h mprea
 OBJECTS = $(SOURCES:.cpp=.o)
 
 # Target executable
-TARGET = kmer_tool
+TARGET = repeat_robust_estimator
 
 # Default target
 all: $(TARGET)
