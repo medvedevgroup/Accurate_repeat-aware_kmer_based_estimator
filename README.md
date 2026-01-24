@@ -215,5 +215,5 @@ Each binary sketch contains:
 
 If you use this tool in your research, please cite:
 
-[Your citation information here]
+[TBD]
 
