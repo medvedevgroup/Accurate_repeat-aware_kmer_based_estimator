@@ -161,8 +161,6 @@ repeat_robust_estimator query [options]
   - `sequence`: Query each sequence separately, use header as ID
   - `batch`: Same as file mode
 
-- `--top INT`: Show only top N results per query
-
 **Note:** Query mode automatically reads k, theta, and seed from the database.
 
 **Examples:**
