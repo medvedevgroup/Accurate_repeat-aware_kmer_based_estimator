@@ -28,32 +28,55 @@ This will create the `repeat_robust_estimator` executable.
 
 ## Quick Start
 
-### 1. Build a sketch database
+We provide a toy example in the `toy_example/` directory to help you get started quickly.
 
-```bash
-# Build from a directory of FASTA files
-./repeat_robust_estimator sketch -i genomes/ -o db/ -k 21 -t 0.001 --h1 -p 8
+### Directory Structure
+
+```
+toy_example/
+├── ref_genomes/       # Reference genomes for building the database
+│   ├── genome1.fna
+│   └── genome2.fna
+├── query_genomes/     # Query genomes for testing
+│   └── query1.fna
+└── toy_db/            # Output database (created after step 1)
 ```
 
-Parameters:
-
-- `-i`: Input directory or FASTA file(s)
-- `-o`: Output database directory
-- `-k`: K-mer size (default: 21)
-- `-t`: Sketching fraction theta (default: 1.0, range: 0-1)
-- `--h1`: Compute h1 statistics for r_cc estimator (default: off)
-- `-p`: Number of threads (default: 1)
-
-### 2. Query sequences against the database
+### Step 1: Build a sketch database from reference genomes
 
 ```bash
-# Basic query
-./repeat_robust_estimator query -d db/ -q query.fasta -o results.tsv
+./repeat_robust_estimator sketch \
+    -i ./toy_example/ref_genomes/ \
+    -o ./toy_example/toy_db/ \
+    -k 21 \
+    -t 0.1 \
+    --h1 \
+    -p 8
+```
 
+**Parameters:**
+- `-i`: Input directory containing reference genomes
+- `-o`: Output directory for the sketch database
+- `-k 21`: Use 21-mers
+- `-t 0.1`: FracMinHash sampling rate
+- `--h1`: Compute h1 statistics (needed for r_cc estimator)
+- `-p 8`: Use 8 threads
+
+### Step 2: Query genomes against the database
+
+```bash
+./repeat_robust_estimator query \
+    -d ./toy_example/toy_db/ \
+    -q ./toy_example/query_genomes/*.fna \
+    -o results.tsv
 # Query with presence-presence mode
-./repeat_robust_estimator query -d db/ -q query.fasta -o results.tsv --pp
-
+./repeat_robust_estimator query \
+    -d ./toy_example/toy_db/ \
+    -q ./toy_example/query_genomes/*.fna \
+    -o results_with_pp.tsv \
+    --pp
 ```
+
 
 ## Usage
 
@@ -197,19 +220,6 @@ Each binary sketch contains:
 - Parameters (k, theta, seed)
 - K-mer counts
 - h1 statistics (if computed)
-
-## Multi-sequence FASTA Handling
-
-**During sketch building:**
-
-- All sequences in a file are concatenated into one sketch
-- Sketch ID = filename (without path and extension)
-- Example: `chr1.fasta` with chr1, chr2, chr3 → sketch ID "chr1"
-
-**During query:**
-
-- `file` mode: Concatenate all sequences, use filename as ID
-- `sequence` mode: Query each sequence separately, use headers as IDs
 
 ## Citation
 
