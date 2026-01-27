@@ -1,0 +1,3 @@
+query_id	target_id	shared_kmers	novel_kmers	query_total	r_pc	r_cc	has_cc
+Bacillus_anthracis_52_G_NZ_CM002395.LargeContigs	Bacillus_anthracis_GCA_000782875.LargeContigs	5465960	32452	5498412	2.818438e-04	2.819028e-04	yes
+Bacillus_anthracis_52_G_NZ_CM002395.LargeContigs	Bacillus_anthracis_CP008853.LargeContigs	5194320	304092	5498412	2.705553e-03	2.706164e-03	yes

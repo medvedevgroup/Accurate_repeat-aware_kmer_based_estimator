@@ -22,7 +22,7 @@ QueryEngine::QueryEngine(const DatabaseMetadata& meta, int threads, bool pp_flag
         hash_threshold = static_cast<uint64_t>(theta * static_cast<double>(UINT64_MAX));
     }
     
-    cout << "QueryEngine initialized from database:\n";
+    cout << "Information initialized from database:\n";
     cout << "  k = " << k << "\n";
     cout << "  theta = " << theta << "\n";
     cout << "  seed = " << seed << "\n";
@@ -95,7 +95,7 @@ KmerSketch SketchBuilder::build_from_string(const string& seq, const string& id)
         }
         
     } else {
-        cout << "  Using " << num_threads << " threads for k-mer extraction...\n";
+        // cout << "  Using " << num_threads << " threads for k-mer extraction...\n";
         
         vector<unordered_map<kmer_t, uint16_t, KmerUtils::KmerHash>> thread_sketch_kmers(num_threads);
         vector<unordered_map<kmer_t, uint16_t, KmerUtils::KmerHash>> thread_all_kmers(num_threads);
@@ -144,7 +144,7 @@ KmerSketch SketchBuilder::build_from_string(const string& seq, const string& id)
             t.join();
         }
         
-        cout << "  Merging results from " << num_threads << " threads...\n";
+        // cout << "  Merging results from " << num_threads << " threads...\n";
         
         size_t total_valid = 0;
         size_t total_skipped = 0;
@@ -223,7 +223,7 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
                                                 const string& output_dir,
                                                 SketchMode mode) const {
     if (mode == SketchMode::COMBINED) {
-        cout << "Building COMBINED sketch from " << fasta_files.size() << " files...\n";
+        cout << "Building combined sketch from " << fasta_files.size() << " files...\n";
         
         string combined_seq;
         string combined_id = "combined";
@@ -251,8 +251,7 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
         cout << "Total memory: " << format_memory(sketch.memory_usage()) << endl;
         
     } else {
-        cout << "Building INDIVIDUAL sketches from " << fasta_files.size() << " files...\n";
-        cout << "  Mode: Incremental disk writing (memory efficient)\n";
+        cout << "Building individual sketches from " << fasta_files.size() << " files...\n";
         
         fs::create_directories(output_dir);
         ofstream index(output_dir + "/index.txt");
@@ -283,7 +282,7 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
             cout << "Total size on disk: " << format_memory(total_memory) << endl;
             
         } else {
-            cout << "  Using " << num_threads << " threads with batch processing\n";
+            // cout << "  Using " << num_threads << " threads with batch processing\n";
             
             size_t batch_size = num_threads * 2;
             size_t sketch_counter = 0;
@@ -294,8 +293,8 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
                 size_t batch_end = min(batch_start + batch_size, fasta_files.size());
                 size_t current_batch_size = batch_end - batch_start;
                 
-                cout << "  Processing batch " << (batch_start / batch_size + 1) 
-                     << " (files " << batch_start << "-" << (batch_end-1) << ")\n";
+                // cout << "  Processing batch " << (batch_start / batch_size + 1) 
+                //      << " (files " << batch_start << "-" << (batch_end-1) << ")\n";
                 
                 vector<KmerSketch> batch_sketches(current_batch_size);
                 vector<thread> worker_threads;
@@ -327,7 +326,7 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
                     t.join();
                 }
                 
-                cout << "  Writing batch to disk...\n";
+                // cout << "  Writing batch to disk...\n";
                 for (const auto& sketch : batch_sketches) {
                     if (sketch.k > 0) {
                         string sketch_file = "sketch_" + to_string(sketch_counter) + ".bin";
@@ -341,7 +340,7 @@ void SketchBuilder::build_database_incremental(const vector<string>& fasta_files
                     }
                 }
                 
-                cout << "  Batch written, total sketches so far: " << sketch_counter << "\n";
+                // cout << "  Batch written, total sketches so far: " << sketch_counter << "\n";
             }
             
             index.close();
@@ -574,7 +573,7 @@ void QueryEngine::query_streaming(const vector<string>& fasta_files,
         output_stream << "\n";
     }
     
-    cout << "Step 2: Streaming through database (" << metadata.size() << " sketches)...\n";
+    // cout << "Step 2: Streaming through database (" << metadata.size() << " sketches)...\n";
     
     size_t total_comparisons = 0;
     

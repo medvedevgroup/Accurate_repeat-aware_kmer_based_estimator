@@ -1,0 +1,2 @@
+Bacillus_anthracis_GCA_000782875.LargeContigs	sketch_0.bin
+Bacillus_anthracis_CP008853.LargeContigs	sketch_1.bin

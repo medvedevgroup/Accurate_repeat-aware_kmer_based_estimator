@@ -52,8 +52,6 @@ void print_usage() {
     cout << "                              Query ID is filename without path/extension\n";
     cout << "                    sequence: Query each sequence separately\n";
     cout << "                              Query ID is the sequence header\n";
-    cout << "                    batch:    Process multiple files (same as file mode)\n";
-    cout << "    --top INT     Show only top N results per query (default: all)\n";
     cout << "    --no-streaming  Load entire database into memory (faster but uses more RAM)\n";
     cout << "\n";
     cout << "NOTE: Query mode automatically reads k, theta, and seed from the database.\n";
@@ -302,12 +300,12 @@ int sketch_mode(int argc, char* argv[]) {
     cout << "  Compute h1: " << (compute_h1 ? "Yes" : "No") << "\n";
     cout << "  Threads: " << num_threads << "\n";
     cout << "  Input files: " << fasta_files.size() << "\n";
-    if (smode == SketchMode::INDIVIDUAL) {
-        cout << "  Note: Using incremental disk writing (memory efficient).\n";
-        cout << "        Each sketch is written immediately after creation.\n";
-        cout << "        Parameters (k, theta, seed) are saved in each sketch.\n";
-    }
-    cout << "\n";
+    // if (smode == SketchMode::INDIVIDUAL) {
+    //     cout << "  Note: Using incremental disk writing (memory efficient).\n";
+    //     cout << "        Each sketch is written immediately after creation.\n";
+    //     cout << "        Parameters (k, theta, seed) are saved in each sketch.\n";
+    // }
+    // cout << "\n";
     
     SketchBuilder builder(k, theta, compute_h1, seed, num_threads);
     builder.build_database_incremental(fasta_files, output_dir, smode);
@@ -386,19 +384,19 @@ int query_mode(int argc, char* argv[]) {
         cout << "H1 stats: " << (metadata.has_h1 ? "Yes" : "No") << "\n";
         cout << string(80, '=') << "\n\n";
         
-        cout << "Using STREAMING query mode (memory efficient)\n";
-        cout << "  - Query k-mers will be extracted and kept in memory\n";
-        cout << "  - Database sketches will be loaded one at a time\n";
-        cout << "  - Results will be written incrementally\n";
-        cout << "  - All parameters (k, theta, seed) read from database automatically\n";
+        // cout << "Using STREAMING query mode (memory efficient)\n";
+        // cout << "  - Query k-mers will be extracted and kept in memory\n";
+        // cout << "  - Database sketches will be loaded one at a time\n";
+        // cout << "  - Results will be written incrementally\n";
+        // cout << "  - All parameters (k, theta, seed) read from database automatically\n";
         
         if (pp_mode) {
-            cout << "  - PP mode ENABLED: Will compute r_pp (presence-presence)\n";
+            cout << "  - PP mode: Will compute r_pp (presence-presence)\n";
         }
         
         if (qmode == QueryMode::PER_FILE || qmode == QueryMode::BATCH) {
             cout << "  - Query mode: Concatenate all sequences per file\n";
-            cout << "  - Query ID: Filename (without path/extension)\n";
+            cout << "  - Query ID: Filename\n";
         } else {
             cout << "  - Query mode: Each sequence separately\n";
             cout << "  - Query ID: Sequence header\n";
@@ -407,12 +405,12 @@ int query_mode(int argc, char* argv[]) {
         
         QueryEngine engine(metadata, num_threads, pp_mode);  // Pass pp_mode
         
-        cout << "Query will use:\n";
-        cout << "  k = " << engine.get_k() << " (from database)\n";
-        cout << "  theta = " << engine.get_theta() << " (from database)\n";
-        cout << "  seed = " << engine.get_seed() << " (from database)\n";
-        cout << "  pp_mode = " << (engine.get_pp_mode() ? "yes" : "no") << "\n";
-        cout << "\n";
+        // cout << "Query will use:\n";
+        // cout << "  k = " << engine.get_k() << " (from database)\n";
+        // cout << "  theta = " << engine.get_theta() << " (from database)\n";
+        // cout << "  seed = " << engine.get_seed() << " (from database)\n";
+        // cout << "  pp_mode = " << (engine.get_pp_mode() ? "yes" : "no") << "\n";
+        // cout << "\n";
         
         engine.query_streaming(query_files, qmode, output_file);
         
