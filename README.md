@@ -1,227 +1,106 @@
-# Accurate_repeat-aware_kmer_based_estimator
+# Repeat-robust mutation rate estimators by $k$-mer sketchs
 
-A tool for estimating mutation rates between genomic sequences using k-mer sketching. Designed to handle repetitive sequences robustly with multiple estimation modes.
+This tool is a prototype of three repeat-robust $k$-mer-based estimators. We consider the following random **substitution process**, parameterized by a rate $0 \le r \le 1$. Given a string $s$, the character at each position mutates to one of the three other nucleotides with probability $r/3$ per nucleotide independently. We denote the mutated string as $t$. The set of all the distinct k-mers of the string $s$ is called a **spectrum** of $s$. The set of all the distinct k-mers with the **counts** in string $s$ is called a **multiplicity** of $s$. The estimators are applicable in different settings, based on whether they need count information of the sequences $s$ and $t$. Note here the roles of $s$ and $t$ is not symmetric, particularly in highly repetitive string. The three estimator corresponds to three modes in our tool:
 
-## Features
-
-- **Three estimation modes:**
-  - **r_pc** (presence-count): Query uses k-mer sets, database uses k-mer counts
-  - **r_cc** (count-count): Both use k-mer counts with h1 bias correction
-  - **r_pp** (presence-presence): Both use k-mer sets
+- **--pp**: presence-to-presence (uses distinct k-mers of $s$ and $t$)
+- **--pc**: presence-to-count (uses distinct k-mers of $s$  and k-mer counts of $t$)
+- **--cc**: count-to-count (uses k-mer counts of $s$ and $t$). 
 
 ## Installation
 
-### Requirements
-
-- C++17 compatible compiler
-- MPFR library (`libmpfr-dev`)
-- GMP library (`libgmp-dev`)
-- OpenMP
-
-### Build
-
 ```bash
+# Compile the tool
 make
 ```
 
-This will create the `repeat_robust_estimator` executable.
-
-## Quick Start
-
-We provide a toy example in the `toy_example/` directory to help you get started quickly.
-
-### Directory Structure
-
-```
-toy_example/
-├── ref_genomes/       # Reference genomes for building the database
-│   ├── genome1.fna
-│   └── genome2.fna
-├── query_genomes/     # Query genomes for testing
-│   └── query1.fna
-└── toy_db/            # Output database (created after step 1)
-```
-
-### Step 1: Build a sketch database from reference genomes
-
-```bash
-./repeat_robust_estimator sketch \
-    -i ./toy_example/ref_genomes/ \
-    -o ./toy_example/toy_db/ \
-    -k 21 \
-    -t 0.1 \
-    --h1 \
-    -p 8
-```
-
-**Parameters:**
-- `-i`: Input directory containing reference genomes
-- `-o`: Output directory for the sketch database
-- `-k 21`: Use 21-mers
-- `-t 0.1`: FracMinHash sampling rate
-- `--h1`: Compute h1 statistics (needed for r_cc estimator)
-- `-p 8`: Use 8 threads
-
-### Step 2: Query genomes against the database
-
-```bash
-./repeat_robust_estimator query \
-    -d ./toy_example/toy_db/ \
-    -q ./toy_example/query_genomes/*.fna \
-    -o results.tsv
-# Query with presence-presence mode
-./repeat_robust_estimator query \
-    -d ./toy_example/toy_db/ \
-    -q ./toy_example/query_genomes/*.fna \
-    -o results_with_pp.tsv \
-    --pp
-```
-
+Requirements: C++17 compatible compiler. 
 
 ## Usage
 
-### Sketch Mode
-
-Build a k-mer sketch database from genomic sequences.
+### Basic 
 
 ```bash
-repeat_robust_estimator sketch [options]
+mutation_estimator --mode <pp|pc|cc> -L <length> -k <kmer_size> -n <novel_kmer_count> [options]
 ```
 
-**Required options:**
+### Required arguments
 
-- `-i PATH`: Input FASTA file(s) or directory
-- `-o DIR`: Output database directory
+- `--mode <mode>`: Estimation mode (pp, pc, or cc)
+- `-L <length>`: Total sequence length in base pairs of $t$
+- `-k <size>`: K-mer size
+- `-n <count of novel kmers>`: Number of novel k-mers (see mode-specific details below)
 
-**Optional parameters:**
+### Optional arguments
 
-- `-k INT`: K-mer size (default: 21, max: 32 or 64 depending on build)
+- `-t <theta>`: FracMinHash sampling rate (default: 1.0)
+- `-s <file>`: FASTA file with original sequence (required for --cc mode)
 
-- `-t FLOAT`: Sketch fraction theta (default: 1.0, no sketching)
+## Modes Explained
 
-- `-s INT`: Random seed (default: 42)
+### Mode 1: --pp (presence-to-presence)
 
-- `-p INT`: Number of threads (default: 1)
+Use distinct k-mer sets of $s$ and $t$. Suitable when you have the k-mer spectra of $s$ and $t$.
 
-- `--h1`: Compute h1 statistics (enables r_cc estimator)
+**Required input**:
 
-- ```
-  --sketch-mode MODE
-  ```
+- `-n`: Number of distinct novel k-mers in $t$'s spectrum (k-mers present in $t$ but not in $s$)
 
-  - `individual`: Each file → separate sketch (default)
-  - `combined`: All files → one merged sketch
-
-**Input formats:**
-
-- Single FASTA file
-- Directory containing FASTA files
-- Text file listing FASTA paths (one per line)
-- Multiple files via wildcards: `-i *.fasta`
-
-**Examples:**
+**Example**:
 
 ```bash
-# Build from directory with h1 statistics
-./repeat_robust_estimator sketch -i genomes/ -o db/ -k 21 -t 0.001 --h1 -p 8
-
-# Build from wildcards
-./repeat_robust_estimator sketch -i /path/*.fasta -o db/ -k 21 --h1
-
-# Build combined sketch (merge all sequences)
-./repeat_robust_estimator sketch -i genomes/ -o db/ -k 21 --sketch-mode combined
+# You have 10,000 distinct novel k-mers
+mutation_estimator --mode pp -L 1000000 -k 21 -n 10000
 ```
 
-### Query Mode
+### Mode 2: --pc (presence-to-count)
 
-Query sequences against a sketch database to estimate mutation rates.
+Use distinct k-mer set of $s$ and k-mer counts of $t$. More accurate than --pp when dealing with repetitive sequences.
+
+**Required input**:
+
+- `-n`: Total number of novel k-mer occurrences in t (with multiplicity)
+
+**Example**:
 
 ```bash
-repeat_robust_estimator query [options]
+# You have 10,000 total novel k-mer occurrences
+mutation_estimator --mode pc -L 1000000 -k 21 -n 10000
 ```
 
-**Required options:**
+### Mode 3: --cc (count-to-count)
 
-- `-d DIR`: Database directory
-- `-q FILE(S)`: Query FASTA file(s)
+Use k-mer counts of $s$ and $t$. Most accurate mode for repetitive sequences. We need $d_1$ value of each k-mer in $s$, where $d_1$ is the number of k-mers with hamming distance $1$ in the spectrum of $s$. 
 
-**Optional parameters:**
+**Required input**:
 
-- `-o FILE`: Output results file (default: stdout)
+- `-n`: Total number of novel k-mer occurrences in t
+- `-s`: FASTA file containing the original sequence s
 
-- `-p INT`: Number of threads (default: 1)
-
-- `--pp`: Enable presence-presence mode (compute r_pp)
-
-- ```
-  --mode MODE
-  ```
-
-  - `file`: Concatenate sequences per file, use filename as ID (default)
-  - `sequence`: Query each sequence separately, use header as ID
-  - `batch`: Same as file mode
-
-**Note:** Query mode automatically reads k, theta, and seed from the database.
-
-**Examples:**
+**Example**:
 
 ```bash
-# Basic query
-./repeat_robust_estimator query -d db/ -q assembly.fasta -o results.tsv -p 4
-
-# Query with presence-presence mode
-./repeat_robust_estimator query -d db/ -q assembly.fasta -o results.tsv --pp
-
-# Query multiple files
-./repeat_robust_estimator query -d db/ -q *.fasta --mode batch -o results.tsv
-
-# Query each sequence separately
-./repeat_robust_estimator query -d db/ -q contigs.fasta --mode sequence -o results.tsv
+# You have 10,000 total novel k-mer occurrences and original sequence s
+mutation_estimator --mode cc -L 1000000 -k 21 -n 10000 -s original.fasta
 ```
 
-## Estimation Methods
+## Using with FracMinHash
 
-This tool implements three k-mer based estimators for mutation rate estimation. Each estimator uses different levels of information from the query sequence (s) and the database sequence (t).
+If you count your novel kmer based on FracMinHash, use the `-t` parameter to specify the sampling rate:
 
-### Estimator Comparison Table
-
-| Estimator      | Knowledge of k-mers in s (query) | Knowledge of k-mers in t (database) | Formula for q                                                |
-| -------------- | -------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
-| $\hat{q}_{pp}$ | Presence/absence                 | Presence/absence                    | $\vert sp(t) \setminus sp(s) \vert $                         |
-| $\hat{q}_{pc}$ | Presence/absence                 | Counts                              | $\sum_{\tau \in sp(t) \setminus sp(s) } occ(\tau,t) /L$      |
-| $\hat{q}_{cc}$ | Counts                           | Counts                              | $\hat{q}_{pc} + (1-\hat{r}\_{pc})^{k-1} · (\hat{r}\_{pc}/3L) \cdot \sum_{\tau \in sp(s)} occ(\tau,s) · h_1(\tau,s)$ |
-
-**Notation:**
-- $s$: Query sequence with $L = \vert s \vert - k + 1$
-- $t$: Database sequence (considered as result of mutation process on s with substitution rate r)
-- $sp(s)$: Set of k-mers present in sequence $s$ (k-spectrum)
-- $occ(\tau, t)$: Number of occurrences of k-mer $\tau$ in sequence $t$
-- $h_1(\tau, s)$: Number of k-mers in $sp(s)$ with Hamming distance 1 from $\tau$
-- $q$: Shorthand for $1 - (1-r)^k$, where r is the substitution rate
-- **Conversion**: Any estimator $\hat{r}$ is defined by $\hat{r} = 1 - (1 - \hat{q})^{1/k}$
-
-## File Organization
-
-When building a sketch database, the tool creates:
-
-```
-db/
-├── index.txt          # Maps sketch IDs to files
-├── sketch_0.bin       # Binary sketch file
-├── sketch_1.bin
-└── ...
+```bash
+# If you sketched with theta=0.01
+# and found 150 novel sketched k-mers
+mutation_estimator --mode pp -L 1000000 -k 21 -n 150 -t 0.01
 ```
 
-Each binary sketch contains:
+### How to get k-mer counts
 
-- Sketch ID
-- Parameters (k, theta, seed)
-- K-mer counts
-- h1 statistics (if computed)
+You can obtain novel k-mer counts from various tools, like [KMC](https://github.com/refresh-bio/KMC), [Jellyfish](https://github.com/gmarcais/Jellyfish), or estimate by FracMinHash by using [sourmash](https://github.com/sourmash-bio/sourmash)
 
 ## Citation
 
-If you use this tool in your research, please cite:
+If you use this tool, please cite:
 
-[TBD]
-
+```
+Haonan Wu, Paul Medvedev. The gift of creation: repeat-robust estimators of substitution rates. 2026 under review. 
+```
