@@ -86,7 +86,7 @@ mutation_estimator --mode pc -m 1000000 -k 21 -n 10000
 
 ### Mode 3: --cc (count-to-count)
 
-Use k-mer counts of $s$ and $t$. Most accurate mode for repetitive sequences. We need $d_1$ value of each k-mer in $s$, where $d_1$ is the number of k-mers with hamming distance $1$ in the spectrum of $s$. For multi-record FASTA files, the code will parse each sequence separately and automatically exclude any $k$-mers containing 'N'.
+Use k-mer counts of $s$ and $t$. Most accurate mode for repetitive sequences. We need $d_1$ value of each k-mer in $s$, where $d_1$ is the number of k-mers with hamming distance $1$ in the spectrum of $s$. For the input FASTA file, the code automatically excludes any $k$-mers containing the character ‘N’ and processes each sequence separately when multiple records are present.
 
 **Required input**:
 
