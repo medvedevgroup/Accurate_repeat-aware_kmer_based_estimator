@@ -118,5 +118,5 @@ Note that our tools does not do k-mer counting or sketching. For k-mer counting 
 
 If you use this tool, please cite:
 
-Haonan Wu and Paul Medvedev, *The gift of creation: repeat-robust estimators of substitution rates*, 2026, under review.
+Haonan Wu and Paul Medvedev, *The gift of novelty: repeat-robust k-mer-based estimators of mutation rates*, 2026, under review.
 
