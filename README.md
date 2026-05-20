@@ -1,5 +1,10 @@
 # Repeat-robust mutation rate estimators by $k$-mer sketchs
 
+> **Note**: This is a lightweight calculator that requires pre-computed k-mer counts as input.
+> For a full end-to-end pipeline (sketching + estimation), see our sourmash plugin:
+> - GitHub: https://github.com/Wu-Haonan/sourmash-plugin-repeat-robust-mutation-rate-estimators
+> - PyPI: https://pypi.org/project/sourmash-plugin-repeat-robust-mutation-rate-estimators/
+
 This tool is a prototype of three **repeat-robust**, **$k$-mer-based** estimators. We consider the following random **substitution process**, parameterized by a rate $0 \le r \le 1$. Given a string $s$, the character at each position mutates to one of the three other nucleotides with probability $r/3$ per nucleotide independently. We denote the mutated string as $t$. The set of all the distinct k-mers of the string $s$ is called a **spectrum** of $s$. When k-mers are associated with their **occurrence counts** in string $s$, we call it a **multiplicity** of $s$. The estimators are applicable in different settings, based on whether they need count information of the sequences $s$ and $t$. Note here the roles of $s$ and $t$ is **not symmetric**, especially for highly repetitive sequences. The three estimator corresponds to three modes in our tool:
 
 - **--pp**: presence-to-presence (uses distinct k-mers of $s$ and $t$)
